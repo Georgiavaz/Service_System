@@ -35,6 +35,9 @@ const userSchema = z.object({
 
 const providerSchema = userSchema.extend({
   businessName: z.string().min(2, "Business name must be at least 2 characters"),
+  ownerName: z.string().min(2, "Owner name must be at least 2 characters"),
+  phoneNumber: z.string().min(10, "Phone number must be at least 10 characters"),
+  businessAddress: z.string().min(5, "Business address must be at least 5 characters"),
   services: z.string().min(2, "Services must be at least 2 characters"),
   contactInfo: z.string().min(10, "Contact info must be at least 10 characters"),
   licenseNumber: z.string().min(5, "License number must be at least 5 characters"),
@@ -52,13 +55,21 @@ function RegisterForm() {
     resolver: zodResolver(role === "user" ? userSchema : providerSchema),
     defaultValues:
       role === "user"
-        ? { name: "", email: "", password: "", profilePhoto: undefined }
+        ? { 
+            name: "", 
+            email: "", 
+            password: "", 
+            profilePhoto: undefined 
+          }
         : {
             name: "",
             email: "",
             password: "",
             profilePhoto: undefined,
             businessName: "",
+            ownerName: "",
+            phoneNumber: "",
+            businessAddress: "",
             services: "",
             contactInfo: "",
             licenseNumber: "",
@@ -70,7 +81,7 @@ function RegisterForm() {
     try {
       const formData = new FormData()
       Object.keys(values).forEach((key) => {
-        if (key === "profilePhoto" && values[key][0]) {
+        if (key === "profilePhoto" && values[key]?.[0]) {
           formData.append(key, values[key][0])
         } else {
           formData.append(key, values[key])
@@ -81,18 +92,20 @@ function RegisterForm() {
       const response = await axios.post("/api/register", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       })
+      
       toast({
         title: "Registration Successful",
         description: "Your account has been successfully created.",
-        status: "success",
+        variant: "success",
       })
+      
       router.push("/login?role=" + role)
     } catch (error) {
       console.error("Registration error:", error)
       toast({
         title: "Registration Failed",
         description: error.response?.data?.message || "An error occurred during registration. Please try again.",
-        status: "error",
+        variant: "destructive",
       })
     } finally {
       setIsLoading(false)
@@ -113,7 +126,9 @@ function RegisterForm() {
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100">
       <div className="w-full max-w-md bg-white rounded-lg shadow-md p-8">
-        <h2 className="text-2xl font-bold mb-6 text-center">{role === "user" ? "User" : "Provider"} Registration</h2>
+        <h2 className="text-2xl font-bold mb-6 text-center">
+          {role === "user" ? "User" : "Provider"} Registration
+        </h2>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <FormField
@@ -129,6 +144,7 @@ function RegisterForm() {
                 </FormItem>
               )}
             />
+            
             <FormField
               control={form.control}
               name="email"
@@ -142,6 +158,7 @@ function RegisterForm() {
                 </FormItem>
               )}
             />
+
             <FormField
               control={form.control}
               name="password"
@@ -149,12 +166,17 @@ function RegisterForm() {
                 <FormItem>
                   <FormLabel>Password</FormLabel>
                   <FormControl>
-                    <Input type="password" placeholder="Enter your password" {...field} />
+                    <Input 
+                      type="password" 
+                      placeholder="Enter your password" 
+                      {...field} 
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
+
             <FormField
               control={form.control}
               name="profilePhoto"
@@ -174,7 +196,7 @@ function RegisterForm() {
                   </FormControl>
                   {previewImage && (
                     <img
-                      src={previewImage || "/placeholder.svg"}
+                      src={previewImage}
                       alt="Preview"
                       className="mt-2 rounded-full w-20 h-20 object-cover"
                     />
@@ -183,6 +205,7 @@ function RegisterForm() {
                 </FormItem>
               )}
             />
+
             {role === "provider" && (
               <>
                 <FormField
@@ -198,6 +221,49 @@ function RegisterForm() {
                     </FormItem>
                   )}
                 />
+
+                <FormField
+                  control={form.control}
+                  name="ownerName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Owner Name</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Enter owner name" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="phoneNumber"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Phone Number</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Enter phone number" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="businessAddress"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Business Address</FormLabel>
+                      <FormControl>
+                        <Textarea placeholder="Enter business address" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
                 <FormField
                   control={form.control}
                   name="services"
@@ -211,6 +277,7 @@ function RegisterForm() {
                     </FormItem>
                   )}
                 />
+
                 <FormField
                   control={form.control}
                   name="contactInfo"
@@ -218,12 +285,16 @@ function RegisterForm() {
                     <FormItem>
                       <FormLabel>Contact Information</FormLabel>
                       <FormControl>
-                        <Input placeholder="Enter your contact information" {...field} />
+                        <Input 
+                          placeholder="Enter your contact information" 
+                          {...field} 
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
+
                 <FormField
                   control={form.control}
                   name="licenseNumber"
@@ -231,7 +302,10 @@ function RegisterForm() {
                     <FormItem>
                       <FormLabel>License Number</FormLabel>
                       <FormControl>
-                        <Input placeholder="Enter your license number" {...field} />
+                        <Input 
+                          placeholder="Enter your license number" 
+                          {...field} 
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -239,7 +313,12 @@ function RegisterForm() {
                 />
               </>
             )}
-            <Button type="submit" className="w-full" disabled={isLoading}>
+
+            <Button 
+              type="submit" 
+              className="w-full" 
+              disabled={isLoading}
+            >
               {isLoading ? "Registering..." : "Register"}
             </Button>
           </form>
@@ -256,4 +335,3 @@ export default function Register() {
     </Suspense>
   )
 }
-

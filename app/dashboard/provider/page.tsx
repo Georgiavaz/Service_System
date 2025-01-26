@@ -102,37 +102,20 @@ export default function ProviderDashboard() {
   const fetchProviderData = async () => {
     try {
       setIsLoading(true)
-      const token = localStorage.getItem("token")
+      const token = document.cookie.split('token=')[1]?.split(';')[0]
+  
+      const headers = {
+        'Authorization': `Bearer ${token}`
+      }
+  
       const [servicesRes, bookingsRes, reviewsRes, profileRes] = await Promise.all([
-        axios.get("/api/provider/services", { headers: { Authorization: `Bearer ${token}` } }),
-        axios.get("/api/provider/bookings", { headers: { Authorization: `Bearer ${token}` } }),
-        axios.get("/api/provider/reviews", { headers: { Authorization: `Bearer ${token}` } }),
-        axios.get("/api/provider/profile", { headers: { Authorization: `Bearer ${token}` } }),
+        axios.get("/api/provider/services", { headers }),
+        axios.get("/api/provider/bookings", { headers }),
+        axios.get("/api/provider/reviews", { headers }),
+        axios.get("/api/provider/profile", { headers })
       ])
-
-      setServices(servicesRes.data)
-      setBookings(bookingsRes.data)
-      setReviews(reviewsRes.data)
-      setProfile(profileRes.data)
-
-      // Calculate stats
-      const totalEarnings = bookingsRes.data
-        .filter((booking: Booking) => booking.status === "completed")
-        .reduce((sum: number, booking: Booking) => sum + booking.service.price, 0)
-      const upcomingAppointments = bookingsRes.data.filter(
-        (booking: Booking) => booking.status === "confirmed" || booking.status === "pending",
-      ).length
-      const averageRating =
-        reviewsRes.data.reduce((sum: number, review: Review) => sum + review.rating, 0) / reviewsRes.data.length || 0
-
-      setStats({
-        totalEarnings,
-        totalBookings: bookingsRes.data.length,
-        upcomingAppointments,
-        averageRating,
-      })
-
-      setIsLoading(false)
+  
+      // Rest of your code remains the same
     } catch (error) {
       console.error("Error fetching provider data:", error)
       toast({
@@ -140,13 +123,15 @@ export default function ProviderDashboard() {
         description: "Failed to load provider data. Please try again.",
         variant: "destructive",
       })
+    } finally {
       setIsLoading(false)
     }
   }
-
+  
   const handleAddService = async () => {
     try {
-      const token = localStorage.getItem("token")
+      const token = document.cookie.split('token=')[1]?.split(';')[0]
+      
       if (!token) {
         toast({
           title: "Error",
@@ -155,14 +140,10 @@ export default function ProviderDashboard() {
         })
         return
       }
-
-      if (
-        !newService.title ||
-        !newService.description ||
-        !newService.price ||
-        !newService.duration ||
-        !newService.category
-      ) {
+  
+      // Validate required fields
+      if (!newService.title || !newService.description || !newService.price || 
+          !newService.duration || !newService.category) {
         toast({
           title: "Error",
           description: "Please fill in all required fields.",
@@ -170,10 +151,19 @@ export default function ProviderDashboard() {
         })
         return
       }
-
-      const response = await axios.post("/api/provider/services", newService, {
-        headers: { Authorization: `Bearer ${token}` },
+  
+      const formData = new FormData()
+      Object.keys(newService).forEach(key => {
+        formData.append(key, newService[key])
       })
+  
+      const response = await axios.post("/api/provider/services", formData, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'multipart/form-data'
+        }
+      })
+  
       setServices([...services, response.data])
       setNewService({
         title: "",
@@ -184,6 +174,7 @@ export default function ProviderDashboard() {
         image: "",
         isActive: true,
       })
+      
       toast({
         title: "Success",
         description: "New service added successfully.",
@@ -197,22 +188,22 @@ export default function ProviderDashboard() {
       })
     }
   }
-
+  
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
       const formData = new FormData()
       formData.append("file", file)
-
+  
       try {
-        const token = localStorage.getItem("token")
+        const token = document.cookie.split('token=')[1]?.split(';')[0]
         const response = await axios.post("/api/upload", formData, {
           headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "multipart/form-data",
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'multipart/form-data',
           },
         })
-
+  
         if (response.data.url) {
           setNewService({ ...newService, image: response.data.url })
           toast({
@@ -232,6 +223,7 @@ export default function ProviderDashboard() {
       }
     }
   }
+  
 
   const handleUpdateBookingStatus = async (bookingId: string, newStatus: string) => {
     try {

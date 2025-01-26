@@ -1,134 +1,150 @@
 import { NextResponse } from "next/server"
-import dbConnect from "@/lib/dbConnect"
-import User from "@/models/User"
-import Provider from "@/models/Provider"
-import { v2 as cloudinary } from "cloudinary"
 import bcrypt from "bcryptjs"
-import { ApiError, handleApiError } from "@/lib/api-error"
+import dbConnect from "@/lib/dbConnect"
+import Provider from "@/models/Provider"
+import User from "@/models/User"
+import { v2 as cloudinary } from "cloudinary"
 
+// Configure Cloudinary
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
 })
 
+// Helper function to upload to Cloudinary
+async function uploadToCloudinary(file: File) {
+  try {
+    const bytes = await file.arrayBuffer()
+    const buffer = Buffer.from(bytes)
+
+    return new Promise((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        { folder: "service_marketplace" },
+        (error, result) => {
+          if (error) {
+            reject(error)
+          } else {
+            resolve(result.secure_url)
+          }
+        }
+      )
+
+      uploadStream.end(buffer)
+    })
+  } catch (error) {
+    console.error("Error uploading to Cloudinary:", error)
+    throw new Error("Failed to upload image")
+  }
+}
+
 export async function POST(request: Request) {
   try {
     await dbConnect()
 
-    const contentType = request.headers.get("content-type") || ""
-    if (!contentType.includes("multipart/form-data")) {
-      throw new ApiError(400, "Content type must be multipart/form-data")
-    }
-
     const formData = await request.formData()
+    const role = formData.get("role")
+    const email = formData.get("email") as string
+    const password = formData.get("password") as string
 
-    const email = formData.get("email")?.toString()
-    const password = formData.get("password")?.toString()
-    const name = formData.get("name")?.toString()
-    const role = formData.get("role")?.toString()
+    // Check if user/provider already exists
+    const existingUser = role === "user" 
+      ? await User.findOne({ email }) 
+      : await Provider.findOne({ email })
 
-    if (!email || !password || !name || !role) {
-      throw new ApiError(400, "Missing required fields", {
-        fields: ["email", "password", "name", "role"].filter((field) => !formData.get(field)),
-      })
+    if (existingUser) {
+      return NextResponse.json(
+        { message: "Email already registered" },
+        { status: 400 }
+      )
     }
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (!emailRegex.test(email)) {
-      throw new ApiError(400, "Invalid email format")
-    }
-
+    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10)
 
-    let profilePhotoUrl = ""
-    const profilePhoto = formData.get("profilePhoto")
-    if (profilePhoto instanceof Blob) {
+    // Handle image upload if present
+    let imageUrl = null
+    const profilePhoto = formData.get("profilePhoto") as File
+    if (profilePhoto && profilePhoto.size > 0) {
       try {
-        const bytes = await profilePhoto.arrayBuffer()
-        const buffer = Buffer.from(bytes)
-        const base64Image = buffer.toString("base64")
-        const dataURI = `data:${profilePhoto.type};base64,${base64Image}`
-
-        const result = await cloudinary.uploader.upload(dataURI, {
-          folder: "service_marketplace/profiles",
-        })
-        profilePhotoUrl = result.secure_url
+        imageUrl = await uploadToCloudinary(profilePhoto)
       } catch (error) {
-        console.error("Cloudinary upload error:", error)
-        throw new ApiError(500, "Failed to upload profile photo")
+        console.error("Image upload error:", error)
+        return NextResponse.json(
+          { message: "Failed to upload image" },
+          { status: 500 }
+        )
       }
     }
 
     if (role === "provider") {
-      const businessName = formData.get("businessName")?.toString()
-      const services = formData.get("services")?.toString()
-      const contactInfo = formData.get("contactInfo")?.toString()
-      const licenseNumber = formData.get("licenseNumber")?.toString()
-
-      if (!businessName || !services || !contactInfo || !licenseNumber) {
-        throw new ApiError(400, "Missing provider fields", {
-          fields: ["businessName", "services", "contactInfo", "licenseNumber"].filter((field) => !formData.get(field)),
-        })
-      }
-
-      const existingProvider = await Provider.findOne({ email })
-      if (existingProvider) {
-        throw new ApiError(409, "Email already registered as a provider")
-      }
-
-      const provider = await Provider.create({
-        email,
+      const providerData = {
+        name: formData.get("name"),
+        email: formData.get("email"),
         password: hashedPassword,
-        name,
-        profilePhoto: profilePhotoUrl,
-        role,
-        businessName,
-        services,
-        contactInfo,
-        licenseNumber,
-      })
+        profilePhoto: imageUrl,
+        businessName: formData.get("businessName"),
+        ownerName: formData.get("ownerName"),
+        phoneNumber: formData.get("phoneNumber"),
+        businessAddress: formData.get("businessAddress"),
+        services: formData.get("services"),
+        contactInfo: formData.get("contactInfo"),
+        licenseNumber: formData.get("licenseNumber"),
+      }
 
-      const providerResponse = provider.toObject()
-      delete providerResponse.password
+      try {
+        const provider = new Provider(providerData)
+        await provider.save()
 
-      return NextResponse.json(
-        {
-          success: true,
-          message: "Provider registration successful.",
-          provider: providerResponse,
-        },
-        { status: 201 },
-      )
+        return NextResponse.json(
+          { message: "Provider registered successfully" },
+          { status: 201 }
+        )
+      } catch (error) {
+        console.error("Provider creation error:", error)
+        return NextResponse.json(
+          { 
+            message: "Failed to create provider account",
+            error: error.message 
+          },
+          { status: 500 }
+        )
+      }
     } else {
-      const existingUser = await User.findOne({ email })
-      if (existingUser) {
-        throw new ApiError(409, "Email already registered as a user")
+      const userData = {
+        name: formData.get("name"),
+        email: formData.get("email"),
+        password: hashedPassword,
+        profilePhoto: imageUrl,
       }
 
-      const user = await User.create({
-        email,
-        password: hashedPassword,
-        name,
-        profilePhoto: profilePhotoUrl,
-        role,
-      })
+      try {
+        const user = new User(userData)
+        await user.save()
 
-      const userResponse = user.toObject()
-      delete userResponse.password
-
-      return NextResponse.json(
-        {
-          success: true,
-          message: "User registration successful",
-          user: userResponse,
-        },
-        { status: 201 },
-      )
+        return NextResponse.json(
+          { message: "User registered successfully" },
+          { status: 201 }
+        )
+      } catch (error) {
+        console.error("User creation error:", error)
+        return NextResponse.json(
+          { 
+            message: "Failed to create user account",
+            error: error.message 
+          },
+          { status: 500 }
+        )
+      }
     }
   } catch (error) {
-    const errorResponse = handleApiError(error)
-    return NextResponse.json(errorResponse, { status: errorResponse.statusCode })
+    console.error("Registration error:", error)
+    return NextResponse.json(
+      { 
+        message: "Error during registration", 
+        error: error.message 
+      },
+      { status: 500 }
+    )
   }
 }
-
